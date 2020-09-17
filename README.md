@@ -1,4 +1,4 @@
-# easy_lars
+# Dimensionality reduction using LASSO - LARS
 
 Alternative implementation of LASSO-LARS algorithm, in pure Python. For educational purposes.
 
