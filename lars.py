@@ -1,7 +1,8 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
+from sklearn import linear_model
+from sklearn import datasets
 import numpy as np
 import matplotlib.pyplot as plt
+
 
 def normalize(data, target):
     """
@@ -11,12 +12,14 @@ def normalize(data, target):
     target = (target - np.mean(target)) / np.std(target)
     return data,target
 
-def lars(data, target, eps=1e-10):
+
+def lars(data, target, eps=np.finfo(float).eps):
     """
     Lars algorithm, given input data and target, return the list of
     lars coefficients and correlations
     """
     # variable initialization
+    target = target[:, np.newaxis]
     (n, p) = np.shape(data)
     m = min(p, n - 1)
     beta = np.zeros((m, p))
@@ -47,7 +50,7 @@ def lars(data, target, eps=1e-10):
         if is_correct_sign:
             active_set = np.append(active_set, variable_to_add).astype(int)
             n_vars = n_vars + 1
-        
+
         # update state variables
         sign_of_active_set = np.sign(current_correlation[active_set])
         inactive_set = np.setdiff1d(np.arange(0, p), active_set)
@@ -73,57 +76,65 @@ def lars(data, target, eps=1e-10):
             for j in range(n_zeros):
                 jj = inactive_set[j]
                 gamma_test[j, :] = np.concatenate(((greatest_correlation - current_correlation[jj]) / (matrix_a
-                                                                 - a[jj]), (greatest_correlation + current_correlation[jj]) / (matrix_a + a[jj])), axis=1)
+                                                                                                       - a[jj]), (greatest_correlation + current_correlation[jj]) / (matrix_a + a[jj])), axis=1)
             (gamma[i], min_i, min_j) = min_positive(gamma_test)
-            variable_to_add = np.unique(inactive_set[min_i])
+            variable_to_add = np.unique(inactive_set[int(min_i)])
         beta_tmp[active_set] = beta[i - 1, active_set].reshape(beta_tmp[active_set].shape) \
-                      + np.dot(gamma[i], length_of_equiangular_vector).reshape(beta_tmp[active_set].shape)
+                               + np.dot(gamma[i], length_of_equiangular_vector).reshape(beta_tmp[active_set].shape)
 
         # update mu doing the step mu = mu_old + gamma * equiangular_vector
         mu = mu_old + np.dot(gamma[i], equiangular_vector)
         mu_old = np.copy(mu)
         beta[i, :] = beta_tmp.T[0]
         i = i + 1
-    return beta, correlations
+    return beta.T, correlations
 
 
 def min_positive(a):
     """
     Find the minimum of the positive elements in an array a
     """
-    a[a.imag != 0] = np.finfo(np.float).max
-    a[a <= 0] = np.finfo(np.float).max
+    a[a.imag != 0] = np.finfo(float).max
+    a[a <= 0] = np.finfo(float).max
     size = a.shape[1]
     i = np.argmin(a) / size
     j = np.argmin(a) % size
     return (np.min(a), i, j)
 
 
-if __name__ == '__main__':
+def plot_coefficients(coefs):
+    xx = np.sum(np.abs(coefs.T), axis=1)
+    xx /= xx[-1]
+    plt.plot(xx, coefs.T)
+    ymin, ymax = plt.ylim()
+    plt.vlines(xx, ymin, ymax, linestyle='dashed')
+    plt.xlabel('|coef| / max|coef|')
+    plt.ylabel('Coefficients')
+    plt.title('LASSO Path')
+    plt.axis('tight')
+    plt.show()
 
+
+def import_and_normalize_diabetes():
     # import file
     name = 'diabetes.txt'
     input_data = np.loadtxt(name, skiprows=1)
     size = input_data.shape[1]
-    data = input_data[:, :size - 1]
-    target = input_data[:, size - 1]
-    target = target[:, np.newaxis]
+    x_var = input_data[:, :size - 1]
+    y_var = input_data[:, size - 1]
+    x_var, y_var = normalize(x_var, y_var)
+    return x_var, y_var
 
-    # normalize
-    data, target = normalize(data, target)
+
+if __name__ == '__main__':
+
+    x_var, y_var = datasets.load_diabetes(return_X_y=True)
+    print("Computing regularization path using the LARS ...")
 
     # run lars
-    coefficients, correlations = lars(data, target)
-    print coefficients
+    coefs, correlations = lars(x_var, y_var)
+    plot_coefficients(coefs=coefs)
 
-    # plot
-    xx = np.sum(np.abs(coefficients), axis=1)
-    xx /= xx[-1]
-    plt.plot(xx, coefficients)
-    (y_min, y_max) = plt.ylim()
-    plt.vlines(xx, y_min, y_max, linestyle='dashed')
-    plt.xlabel('|beta_j| / max|beta_j|')
-    plt.ylabel('Coefficients')
-    plt.title('LARS Path')
-    plt.axis('tight')
-    plt.show()
+    # run lars sklearn
+    _, _, coefs = linear_model.lars_path(x_var, y_var, method='lasso', verbose=False)
+    plot_coefficients(coefs=coefs)
